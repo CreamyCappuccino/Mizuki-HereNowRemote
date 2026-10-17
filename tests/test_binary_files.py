@@ -97,3 +97,25 @@ def test_invalid_read_mode_rejected(rig):
     with pytest.raises(HereNowError) as error:
         reader.read_file("test-site", "index.html", binary_mode="raw")
     assert error.value.code == "invalid_binary_mode"
+
+def test_new_site_can_include_png_in_initial_create():
+    import httpx
+    from here_now_remote.here_now_http import ProviderHTTP
+    from here_now_remote.site_create import SiteCreator
+    from here_now_remote.site_reader import SiteReader
+    from test_site_lifecycle import LifecycleProvider
+
+    provider = LifecycleProvider()
+    http = ProviderHTTP("test-key", transport=httpx.MockTransport(provider.handle))
+    try:
+        receipt = SiteCreator(SiteReader(http)).create([
+            TextChange("index.html", "<img src='assets/logo.png'>"),
+            TextChange("assets/logo.png", base64.b64encode(PNG_BYTES).decode(), encoding="base64"),
+        ], "Demo")
+        assert receipt.status == "published" and receipt.uploaded == 2
+        entries = {e["path"]: e for e in provider.create_manifest}
+        assert entries["assets/logo.png"]["contentType"] == "image/png"
+        assert entries["assets/logo.png"]["hash"] == digest(PNG_BYTES)
+        assert provider.uploads["assets/logo.png"] == PNG_BYTES
+    finally:
+        http.close()
