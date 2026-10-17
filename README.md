@@ -2,7 +2,7 @@
 
 A small MCP for reading and editing HTML/CSS/JS in owned [here.now](https://here.now) sites without changing their URLs.
 
-**Status:** v0.1 implemented; [CI passed](https://github.com/CreamyCappuccino/Mizuki-HereNowRemote/actions/runs/39018635047) with 49 tests including the actual MCP SDK, plus Ruff. Provider operations use an in-memory HTTP test service. Live here.now publishing and operator-host deployment remain unverified.
+**Status:** v0.2 code adds Site creation, history and restore. The existing v0.1 service has been used from ChatGPT for real read/write; the three new operations have passed isolated tests and are awaiting operator-host deployment and live provider acceptance.
 
 ## Use
 
@@ -18,7 +18,7 @@ Set `HERENOW_API_KEY` in the process environment, or use the existing owner-only
 
 The MCP SDK is an optional dependency so the provider core can be tested independently. The MCP host targets **SDK 2.0.0**, not the v1 FastMCP interface.
 
-## Four tools
+## Seven tools
 
 | Tool | Purpose |
 | --- | --- |
@@ -26,12 +26,17 @@ The MCP SDK is an optional dependency so the provider core can be tested indepen
 | `get_site(slug)` | Current version and complete manifest |
 | `read_site_file(slug, path, base_version_id?)` | Read owner-authenticated UTF-8 text and verify its manifest hash |
 | `update_site_files(slug, base_version_id, changes)` | Replace/add requested text files; keep all other files |
+| `create_site(files, display_name?)` | Create a new public personal-account site from text files (root index.html required) and return its URL |
+| `list_versions(slug)` | List historical published versions of an owned site |
+| `restore_version(slug, version_id, base_version_id)` | Explicitly restore the entire site to a selected saved version |
 
 `changes` is a list of `{ "path": "assets/style.css", "content": "..." }`. An optional `content_type` changes the MIME type; omitting it preserves the existing type. The `base_version_id` must come from the files that were actually edited, not from a fresh read immediately before writing.
 
-Publication is one tool call: merge manifest → upload required bytes → finalize → compare current version/manifest. Output is compact text with a matching minimal `structuredContent.result` string and `outputSchema` on all four tools; errors remain MCP error results. No new CMS, database, approval queue or Git sync.
+Publication is one tool call: merge manifest → upload required bytes → finalize → compare current version/manifest. Output is compact text with a matching minimal `structuredContent.result` string and `outputSchema` on all seven tools; errors remain MCP error results. No new CMS, database, approval queue or Git sync.
 
 Remote HTTP has a side-effect-free, unauthenticated `GET /health` returning `{"status":"ok"}` for origin and tunnel liveness checks. It does not contact here.now or expose site/credential data.
+
+Custom `nor.strangebasket.com/<path>/` mounts remain separate Cloudflare operations requests; this MCP never creates DNS or Tunnel routes.
 
 ## Boundaries that matter
 
