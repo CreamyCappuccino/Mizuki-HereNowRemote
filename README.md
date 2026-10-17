@@ -44,6 +44,10 @@ Remote HTTP has a side-effect-free, unauthenticated `GET /health` returning `{"s
 
 ## Documents
 
-- [Design and phase/source index](docs/DESIGN.md)
-- [Setup, API evidence and test scope](docs/IMPLEMENTATION.md)
+- [Official here.now API documentation](https://here.now/docs)
+- [Official here.now publisher](https://github.com/heredotnow/skill/tree/main/here-now)
 - [Change log](changelogs/)
+
+Maintainer-only notes are not part of this public repository. The package is
+independently buildable from its public dependencies; no private documentation
+or private package is required.
