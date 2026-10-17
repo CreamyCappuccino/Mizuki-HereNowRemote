@@ -25,6 +25,9 @@ def test_eight_tools_and_real_sdk_update(rig):
         tools = await server.list_tools()
         assert [t.name for t in tools] == ["list_sites", "get_site", "read_site_file", "update_site_files", "delete_site_files", "create_site", "list_versions", "restore_version"]
         assert tools[-1].annotations.destructive_hint is True
+        assert "encoding" in str(tools[3].input_schema)
+        assert "encoding" in str(tools[5].input_schema)
+        assert "binary_mode" in str(tools[2].input_schema)
         for tool in tools:
             assert tool.output_schema is not None
             assert tool.output_schema["properties"]["result"]["type"] == "string"
