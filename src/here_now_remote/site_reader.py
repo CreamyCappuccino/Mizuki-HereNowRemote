@@ -1,6 +1,7 @@
 """Read owner metadata and hash-checked bytes through authenticated file APIs."""
 from __future__ import annotations
 
+import base64
 from urllib.parse import quote
 
 from .here_now_http import ProviderHTTP
@@ -31,7 +32,8 @@ class SiteReader:
             raise HereNowError("content_mismatch", "File bytes differ from the manifest. Re-read later; do not edit this response.", stage="read_file")
         return data
 
-    def read_file(self, slug: str, path: str, base_version_id: str | None = None) -> dict:
+    def read_file(self, slug: str, path: str, base_version_id: str | None = None,
+                  binary_mode: str = "metadata") -> dict:
         validate_path(path)
         snapshot = self.get_site(slug)
         if base_version_id is not None and snapshot.version != base_version_id:
@@ -39,14 +41,25 @@ class SiteReader:
         entry = snapshot.by_path.get(path)
         if entry is None:
             raise HereNowError("not_found", "File is absent from the current manifest.", stage="read_file")
-        result = {"slug": slug, "version": snapshot.version, "file": entry, "content": None}
-        if not is_text(entry.content_type):
+        if binary_mode not in {"metadata", "base64"}:
+            raise HereNowError("invalid_binary_mode", "Use binary_mode='metadata' or 'base64'.")
+        result = {"slug": slug, "version": snapshot.version, "file": entry,
+                  "content": None, "encoding": None}
+        is_binary = not is_text(entry.content_type)
+        if is_binary and binary_mode == "metadata":
             return result
+        if is_binary and entry.size > 256 * 1024:
+            raise HereNowError("too_large", "Base64 read exceeds 256 KiB; metadata is available.", stage="read_file")
         data = self.bytes_for(snapshot, entry)
         if self.get_site(slug).version != snapshot.version:
             raise HereNowError("version_conflict", "Site changed during the file read; read again.", stage="read_file")
-        try:
-            result["content"] = data.decode("utf-8")
-        except UnicodeError as error:
-            raise HereNowError("not_utf8", "File is not UTF-8 text.", stage="read_file") from error
+        if is_binary:
+            result["content"] = base64.b64encode(data).decode("ascii")
+            result["encoding"] = "base64"
+        else:
+            try:
+                result["content"] = data.decode("utf-8")
+            except UnicodeError as error:
+                raise HereNowError("not_utf8", "File is not UTF-8 text.", stage="read_file") from error
+            result["encoding"] = "utf-8"
         return result
