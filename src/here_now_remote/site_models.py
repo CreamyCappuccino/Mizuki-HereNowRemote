@@ -1,6 +1,8 @@
 """Manifest values, text changes and validation independent of MCP/HTTP."""
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import re
 from dataclasses import dataclass
@@ -57,6 +59,10 @@ def content_type_for(path: str) -> str:
         ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".mjs": "text/javascript; charset=utf-8", ".json": "application/json",
         ".svg": "image/svg+xml", ".xml": "application/xml", ".txt": "text/plain; charset=utf-8",
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".webp": "image/webp", ".gif": "image/gif", ".avif": "image/avif",
+        ".ico": "image/x-icon", ".bmp": "image/bmp", ".pdf": "application/pdf",
+        ".woff": "font/woff", ".woff2": "font/woff2", ".mp4": "video/mp4",
     }.get(PurePosixPath(path).suffix.lower(), "text/plain; charset=utf-8")
 
 
@@ -130,6 +136,7 @@ class TextChange:
     path: str
     content: str
     content_type: str | None = None
+    encoding: str = "utf-8"
 
 
 def merge_changes(
@@ -144,15 +151,28 @@ def merge_changes(
             raise HereNowError("duplicate_change", "A path appears twice in changes.")
         if not isinstance(change.content, str):
             raise HereNowError("invalid_content", "File contents must be UTF-8 text.")
-        try:
-            content = change.content.encode("utf-8")
-        except UnicodeError as error:
-            raise HereNowError("invalid_content", "File contents are not valid UTF-8.") from error
+        if change.encoding == "utf-8":
+            try:
+                content = change.content.encode("utf-8")
+            except UnicodeError as error:
+                raise HereNowError("invalid_content", "File contents are not valid UTF-8.") from error
+        elif change.encoding == "base64":
+            # Refuse oversized encoded payloads before allocating decoded bytes.
+            if len(change.content) > 4 * ((max_bytes + 2) // 3):
+                raise HereNowError("too_large", "Decoded change payload exceeds the MCP byte limit.")
+            try:
+                content = base64.b64decode(change.content, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise HereNowError("invalid_base64", "Supply canonical padded base64 with no whitespace.") from error
+            if base64.b64encode(content).decode("ascii") != change.content:
+                raise HereNowError("invalid_base64", "Supply canonical padded base64 with no whitespace.")
+        else:
+            raise HereNowError("invalid_encoding", "Use encoding='utf-8' or 'base64'.")
         previous = merged.get(path)
         mime = change.content_type or (previous.content_type if previous else content_type_for(path))
         entry = FileEntry.parse({"path": path, "size": len(content), "contentType": mime, "hash": digest(content)})
-        if not is_text(mime):
-            raise HereNowError("not_text", "This version accepts text changes only.")
+        if change.encoding == "utf-8" and not is_text(mime):
+            raise HereNowError("not_text", "Use base64 encoding to publish non-text files.")
         merged[path], bodies[path] = entry, content
     if sum(map(len, bodies.values())) > max_bytes:
         raise HereNowError("too_large", "Change payload exceeds the configured MCP text limit.")
