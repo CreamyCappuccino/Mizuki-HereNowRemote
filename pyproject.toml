@@ -11,7 +11,7 @@ dependencies = ["httpx>=0.28,<1"]
 
 [project.optional-dependencies]
 mcp = ["mcp==2.0.0", "PyJWT[crypto]>=2.10,<3", "uvicorn>=0.31,<1"]
-dev = ["pytest>=8,<9", "ruff>=0.9,<1"]
+dev = ["pytest>=8,<9", "ruff>=0.9,<1", "PyJWT[crypto]>=2.10,<3"]
 
 [project.scripts]
 herenow-remote = "here_now_remote.mcp_server:main"
