@@ -1,4 +1,4 @@
-"""Four MCP operations. No approval queue and no local-file/shell exposure."""
+"""Owned Site read, publish and history operations; no shell or deployment control."""
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +10,9 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from .oauth_resource import READ_SCOPE, WRITE_SCOPE
+from .site_create import SiteCreator
 from .site_models import HereNowError, TextChange
+from .site_versions import SiteVersions
 from .site_reader import SiteReader
 from .site_update import SiteUpdater
 from .tool_output import error_text, file_text, receipt_text, site_text
@@ -81,4 +83,41 @@ def register_tools(server, reader: SiteReader, updater: SiteUpdater, *, oauth_en
         def run():
             receipt = updater.update(slug, base_version_id, [TextChange(**c.model_dump()) for c in changes])
             return receipt_text(receipt), receipt.status not in {"published", "unchanged"}
+        return await invoke(run, write=True)
+    @server.tool(**descriptor("Create a new public here.now website", write=True))
+    async def create_site(files: list[ChangeInput], display_name: str | None = None) -> Annotated[CallToolResult, ToolTextResult]:
+        """Create a separate public Site from UTF-8 files including root index.html, finalize and return its URL. This publishes immediately."""
+        def run():
+            receipt = SiteCreator(reader).create([TextChange(**c.model_dump()) for c in files], display_name)
+            lines = [f"{receipt.status} | {receipt.slug or '-'}", f"url {receipt.url or '-'}",
+                     f"version {receipt.version or '-'}", f"uploaded {receipt.uploaded}"]
+            if receipt.message:
+                lines.append(receipt.message)
+            return "\n".join(lines), receipt.status != "published"
+        return await invoke(run, write=True)
+
+    @server.tool(**descriptor("List a site's published versions"))
+    async def list_versions(slug: str) -> Annotated[CallToolResult, ToolTextResult]:
+        """List saved versions of an owned Site. Restore is a separate write operation."""
+        def run():
+            current, rows = SiteVersions(reader).list(slug)
+            lines = [f"site {slug} | current {current} | versions {len(rows)}"]
+            for row in rows:
+                vid = row.get("versionId") or row.get("id") or "?"
+                date = row.get("createdAt") or row.get("publishedAt") or "?"
+                source = row.get("source") or "?"
+                lines.append(f"{vid} | {date} | {source}{' | current' if vid == current else ''}")
+            return "\n".join(lines), False
+        return await invoke(run)
+
+    @server.tool(**descriptor("Restore the whole Site to a selected version", write=True))
+    async def restore_version(slug: str, version_id: str, base_version_id: str) -> Annotated[CallToolResult, ToolTextResult]:
+        """Restore a previous version of the entire Site on explicit request. Use the current base version; changes after the target may be lost."""
+        def run():
+            receipt = SiteVersions(reader).restore(slug, version_id, base_version_id)
+            lines = [f"{receipt.status} | {receipt.slug}", f"restored from {receipt.restored_from}",
+                     f"version {receipt.old_version} -> {receipt.current_version or '?'}"]
+            if receipt.message:
+                lines.append(receipt.message)
+            return "\n".join(lines), receipt.status not in {"restored", "unchanged"}
         return await invoke(run, write=True)
