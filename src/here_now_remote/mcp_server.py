@@ -26,7 +26,7 @@ def create_server(reader: SiteReader, *, oauth: OAuthConfig | None = None, verif
         resource_server_url=AnyHttpUrl(oauth.resource), required_scopes=[READ_SCOPE])
     server = MCPServer("Mizuki-HereNowRemote", version="0.1.0", auth=auth,
         token_verifier=(verifier or OAuthVerifier(oauth)) if oauth else None,
-        instructions="Read versioned files, edit requested HTML/CSS/JS, then update_site_files. No CMS, approval queue, or filesystem access. Coordinate external publishers; site version checks are not atomic.")
+        instructions="Read versioned files, edit requested HTML/CSS/JS, then update_site_files. No CMS, approval queue, or filesystem access. Use the exact edited version for provider stale-base protection; no forced overwrite.")
     register_tools(server, reader, SiteUpdater(reader), oauth_enabled=oauth is not None)
     return server
 
