@@ -18,12 +18,12 @@ def config():
     return OAuthConfig("https://auth.example.com", "https://mcp.example.com/mcp", "https://auth.example.com/jwks")
 
 
-def test_four_tools_and_real_sdk_update(rig):
+def test_eight_tools_and_real_sdk_update(rig):
     fake, reader, _ = rig
     server = create_server(reader)
     async def run():
         tools = await server.list_tools()
-        assert [t.name for t in tools] == ["list_sites", "get_site", "read_site_file", "update_site_files", "create_site", "list_versions", "restore_version"]
+        assert [t.name for t in tools] == ["list_sites", "get_site", "read_site_file", "update_site_files", "delete_site_files", "create_site", "list_versions", "restore_version"]
         assert tools[-1].annotations.destructive_hint is True
         for tool in tools:
             assert tool.output_schema is not None
@@ -52,6 +52,9 @@ def test_remote_read_scope_cannot_write(rig):
                 "changes": [{"path": "index.html", "content": "new"}]})
             assert result.is_error and "insufficient_scope" in result.content[0].text
             assert result.structured_content == {"result": result.content[0].text}
+            deleted = await server.call_tool("delete_site_files", {"slug": fake.slug,
+                "base_version_id": "v1", "paths": ["assets/style.css"]})
+            assert deleted.is_error and "insufficient_scope" in deleted.content[0].text
             create = await server.call_tool("create_site", {"files": [
                 {"path": "index.html", "content": "<h1>No permission</h1>"}]})
             assert create.is_error and "insufficient_scope" in create.content[0].text
