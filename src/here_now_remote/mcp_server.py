@@ -24,7 +24,7 @@ from .site_update import SiteUpdater
 def create_server(reader: SiteReader, *, oauth: OAuthConfig | None = None, verifier=None):
     auth = None if oauth is None else AuthSettings(issuer_url=AnyHttpUrl(oauth.issuer),
         resource_server_url=AnyHttpUrl(oauth.resource), required_scopes=[READ_SCOPE])
-    server = MCPServer("Mizuki-HereNowRemote", version="0.3.0", auth=auth,
+    server = MCPServer("Mizuki-HereNowRemote", version="0.4.0", auth=auth,
         token_verifier=(verifier or OAuthVerifier(oauth)) if oauth else None,
         instructions="Read Site files, create/edit HTML/CSS/JS, publish updates, list versions and delete selected Site paths. No CMS, approval queue, or filesystem access. Use the exact edited version for provider stale-base protection; no forced overwrite.")
     register_tools(server, reader, SiteUpdater(reader), oauth_enabled=oauth is not None)
