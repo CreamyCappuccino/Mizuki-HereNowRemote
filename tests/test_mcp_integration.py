@@ -23,7 +23,7 @@ def test_four_tools_and_real_sdk_update(rig):
     server = create_server(reader)
     async def run():
         tools = await server.list_tools()
-        assert [t.name for t in tools] == ["list_sites", "get_site", "read_site_file", "update_site_files"]
+        assert [t.name for t in tools] == ["list_sites", "get_site", "read_site_file", "update_site_files", "create_site", "list_versions", "restore_version"]
         assert tools[-1].annotations.destructive_hint is True
         for tool in tools:
             assert tool.output_schema is not None
@@ -52,6 +52,12 @@ def test_remote_read_scope_cannot_write(rig):
                 "changes": [{"path": "index.html", "content": "new"}]})
             assert result.is_error and "insufficient_scope" in result.content[0].text
             assert result.structured_content == {"result": result.content[0].text}
+            create = await server.call_tool("create_site", {"files": [
+                {"path": "index.html", "content": "<h1>No permission</h1>"}]})
+            assert create.is_error and "insufficient_scope" in create.content[0].text
+            restore = await server.call_tool("restore_version", {"slug": fake.slug,
+                "version_id": "v0", "base_version_id": "v1"})
+            assert restore.is_error and "insufficient_scope" in restore.content[0].text
         finally:
             auth_context_var.reset(handle)
     asyncio.run(run())
