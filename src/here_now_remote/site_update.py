@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field, replace
 
-from .site_models import FileEntry, HereNowError, SiteSnapshot, TextChange, digest, merge_changes
+from .site_models import FileEntry, HereNowError, SiteSnapshot, TextChange, digest, merge_changes, validate_path
 from .site_reader import SiteReader
 
 CONCURRENCY_NOTE = "Uses the provider baseVersionId guard; conflicts are returned without overwrite or blind retry."
@@ -42,19 +42,45 @@ class SiteUpdater:
         with lock:
             return self._update(slug, base_version_id, changes)
 
-    def _update(self, slug: str, base: str, changes: list[TextChange]) -> PublishReceipt:
+    def delete_files(self, slug: str, base_version_id: str, paths: list[str]) -> PublishReceipt:
+        """Remove exact paths without replacing or deleting the whole Site."""
+        if not isinstance(base_version_id, str) or not base_version_id:
+            raise HereNowError("missing_version", "Pass the version returned with the Site manifest.")
+        with self._locks_guard:
+            lock = self._locks.setdefault(slug, threading.Lock())
+        with lock:
+            return self._update(slug, base_version_id, [], delete_paths=paths)
+
+    def _update(self, slug: str, base: str, changes: list[TextChange],
+                *, delete_paths: list[str] | None = None) -> PublishReceipt:
         before = self.reader.get_site(slug)
         self._require_version(before, base)
-        merged, bodies = merge_changes(before, changes, max_bytes=self.max_change_bytes)
+        if delete_paths is None:
+            merged, bodies = merge_changes(before, changes, max_bytes=self.max_change_bytes)
+            changed = tuple(sorted(c.path for c in changes if merged[c.path] != before.by_path.get(c.path)))
+        else:
+            if not isinstance(delete_paths, list) or not delete_paths:
+                raise HereNowError("empty_deletion", "Specify at least one Site-relative path to delete.")
+            validated = [validate_path(p, writing=True) for p in delete_paths]
+            if len(set(validated)) != len(validated):
+                raise HereNowError("duplicate_path", "Each deletion path must appear only once.")
+            merged = before.by_path.copy()
+            for path in validated:
+                if path not in merged:
+                    raise HereNowError("not_found", f"File does not exist in the current Site: {path}")
+                del merged[path]
+            if not merged:
+                raise HereNowError("empty_site", "Refusing to remove the last Site file. Delete the Site separately.")
+            bodies = {}
+            changed = tuple(sorted(validated))
         # Only hashless legacy entries need bytes. Ordinary unchanged assets stay remote.
         for path, entry in tuple(merged.items()):
             if entry.sha256 is None:
                 content = self.reader.bytes_for(before, entry)
                 merged[path] = replace(entry, sha256=digest(content))
                 bodies[path] = content
-        changed = tuple(sorted(c.path for c in changes if merged[c.path] != before.by_path.get(c.path)))
         receipt = PublishReceipt("unchanged", slug, before.url, base, base, base, changed,
-                                 changed_hashes={p: merged[p].sha256 for p in changed})
+                                 changed_hashes={p: merged[p].sha256 for p in changed if p in merged})
         if not changed:
             return receipt
         self._require_version(self.reader.get_site(slug), base)
