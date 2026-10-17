@@ -84,6 +84,14 @@ def register_tools(server, reader: SiteReader, updater: SiteUpdater, *, oauth_en
             receipt = updater.update(slug, base_version_id, [TextChange(**c.model_dump()) for c in changes])
             return receipt_text(receipt), receipt.status not in {"published", "unchanged"}
         return await invoke(run, write=True)
+    @server.tool(**descriptor("Delete selected Site files while preserving all others", write=True))
+    async def delete_site_files(slug: str, base_version_id: str, paths: list[str]) -> Annotated[CallToolResult, ToolTextResult]:
+        """Remove only the requested paths from a published Site. Requires the version you inspected; other files are preserved, and a previous version can be restored."""
+        def run():
+            receipt = updater.delete_files(slug, base_version_id, paths)
+            return receipt_text(receipt), receipt.status not in {"published", "unchanged"}
+        return await invoke(run, write=True)
+
     @server.tool(**descriptor("Create a new public here.now website", write=True))
     async def create_site(files: list[ChangeInput], display_name: str | None = None) -> Annotated[CallToolResult, ToolTextResult]:
         """Create a separate public Site from UTF-8 files including root index.html, finalize and return its URL. This publishes immediately."""
