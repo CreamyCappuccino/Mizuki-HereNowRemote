@@ -25,10 +25,15 @@ def test_four_tools_and_real_sdk_update(rig):
         tools = await server.list_tools()
         assert [t.name for t in tools] == ["list_sites", "get_site", "read_site_file", "update_site_files"]
         assert tools[-1].annotations.destructive_hint is True
+        for tool in tools:
+            assert tool.output_schema is not None
+            assert tool.output_schema["properties"]["result"]["type"] == "string"
+            assert "result" in tool.output_schema["required"]
         result = await server.call_tool("update_site_files", {"slug": fake.slug, "base_version_id": "v1",
             "changes": [{"path": "assets/style.css", "content": "h1 { color: red; }"}]})
         assert not result.is_error
         assert "published | test-site" in result.content[0].text
+        assert result.structured_content == {"result": result.content[0].text}
     asyncio.run(run())
     assert fake.finalize_count == 1
 
@@ -42,9 +47,11 @@ def test_remote_read_scope_cannot_write(rig):
         try:
             read = await server.call_tool("get_site", {"slug": fake.slug})
             assert not read.is_error
+            assert read.structured_content == {"result": read.content[0].text}
             result = await server.call_tool("update_site_files", {"slug": fake.slug, "base_version_id": "v1",
                 "changes": [{"path": "index.html", "content": "new"}]})
             assert result.is_error and "insufficient_scope" in result.content[0].text
+            assert result.structured_content == {"result": result.content[0].text}
         finally:
             auth_context_var.reset(handle)
     asyncio.run(run())
@@ -57,6 +64,9 @@ def test_http_metadata_and_anonymous_rejection(rig):
     server = create_server(reader, oauth=oauth)
     app = create_http_app(server, oauth)
     with TestClient(app, base_url="https://mcp.example.com") as client:
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json() == {"status": "ok"}
         metadata = client.get("/.well-known/oauth-protected-resource/mcp")
         assert metadata.status_code == 200
         assert metadata.json()["scopes_supported"] == ["herenow:read", "herenow:write"]
