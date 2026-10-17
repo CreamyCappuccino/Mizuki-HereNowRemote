@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import closing
 import stat
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -46,7 +47,9 @@ class ProviderHTTP:
 
     def _send(self, method: str, url: str, *, stage: str, max_bytes: int, **kwargs) -> bytes:
         try:
-            with self._client.stream(method, url, **kwargs) as response:
+            request = self._client.build_request(method, url, **kwargs)
+            request.headers.pop("cookie", None)
+            with closing(self._client.send(request, stream=True)) as response:
                 if not 200 <= response.status_code < 300:
                     status = response.status_code
                     code = "version_conflict" if status == 409 else f"http_{status}"
@@ -80,9 +83,11 @@ class ProviderHTTP:
             raise HereNowError("invalid_response", "Provider did not return a successful object.")
         return value
 
-    def public_bytes(self, slug: str, encoded_path: str, *, max_bytes: int) -> bytes:
-        return self._send("GET", f"https://{slug}.here.now/{encoded_path}", stage="read_file", max_bytes=max_bytes,
-                          headers={"Cache-Control": "no-cache"})
+    def file_bytes(self, slug: str, encoded_path: str, *, max_bytes: int) -> bytes:
+        return self._send("GET", f"{API_BASE}/api/v1/publish/{slug}/files/{encoded_path}",
+                          stage="read_file", max_bytes=max_bytes,
+                          headers={"Authorization": f"Bearer {self._key}",
+                                   "X-HereNow-Client": "chatgpt/herenow-remote"})
 
     def upload(self, target: dict, content: bytes) -> None:
         url = target.get("url")
