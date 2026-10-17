@@ -17,8 +17,9 @@ def test_delete_single_file_preserves_other_files(rig):
     assert set(snapshot.by_path) == {"index.html"}
     assert snapshot.by_path["index.html"].sha256 == old_index_hash
     assert snapshot.version == "v2"
-    with pytest.raises(HereNowError, match="not found|is not|does not"):
+    with pytest.raises(HereNowError) as error:
         reader.read_file(fake.slug, "assets/style.css")
+    assert error.value.code == "not_found"
 
 
 @pytest.mark.parametrize("paths,code", [
