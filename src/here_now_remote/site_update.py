@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 from .site_models import FileEntry, HereNowError, SiteSnapshot, TextChange, digest, merge_changes
 from .site_reader import SiteReader
 
-CONCURRENCY_NOTE = "Single MCP process serializes updates; external publishers are not atomically locked."
+CONCURRENCY_NOTE = "Uses the provider baseVersionId guard; conflicts are returned without overwrite or blind retry."
 
 
 @dataclass(frozen=True)
@@ -58,9 +58,9 @@ class SiteUpdater:
         if not changed:
             return receipt
         self._require_version(self.reader.get_site(slug), base)
-        # Do not send undocumented baseVersionId or AIL-specific spaMode/TTL settings.
+        # Provider checks the edited version; preserve existing SPA/TTL/access settings.
         prepared = self.http.json("PUT", f"/api/v1/publish/{slug}",
-                                  {"files": [merged[p].request_value() for p in sorted(merged)]})
+                                  {"files": [merged[p].request_value() for p in sorted(merged)], "baseVersionId": base})
         upload = prepared.get("upload")
         if not isinstance(upload, dict) or not isinstance(upload.get("versionId"), str) or not upload["versionId"]:
             raise HereNowError("invalid_response", "Prepare did not return a pending version.", stage="prepare")
@@ -85,8 +85,9 @@ class SiteUpdater:
 
         # Construct the canonical endpoint instead of attaching a key to finalizeUrl.
         finalize_error = None
+        finalized = {}
         try:
-            self.http.json("POST", f"/api/v1/publish/{slug}/finalize", {"versionId": version})
+            finalized = self.http.json("POST", f"/api/v1/publish/{slug}/finalize", {"versionId": version})
         except HereNowError as error:
             finalize_error = error
         # A timeout can occur after publication. Read back; never blindly re-publish.
@@ -95,6 +96,12 @@ class SiteUpdater:
         except HereNowError:
             return replace(receipt, status="outcome_unknown", current_version=None,
                            message="Finalization may have completed. Read the site and compare target version/hashes before retrying.")
+        if finalize_error and finalize_error.code == "version_conflict":
+            return replace(receipt, status="version_conflict", current_version=after.version,
+                           message="Provider rejected a stale base at finalize. Re-read and reconcile before publishing.")
+        if finalized.get("unchanged") is True and after.version == finalized.get("currentVersionId") and after.by_path == merged:
+            return replace(receipt, status="unchanged", target_version=after.version,
+                           current_version=after.version, message="Provider confirmed unchanged content; manifest verified.")
         if after.version == version and after.by_path == merged:
             note = "Publication verified by version and full manifest."
             if finalize_error:
