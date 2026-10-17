@@ -47,6 +47,11 @@ def create_http_app(server, oauth: OAuthConfig):
     if len(matches) != 1:
         raise RuntimeError("SDK protected-resource metadata route differs from the verified contract.")
     app.routes[matches[0]] = Route(path, endpoint=cors_middleware(metadata, ["GET", "OPTIONS"]), methods=["GET", "OPTIONS"])
+    async def health(request):
+        # No provider I/O, authentication data or site details in liveness output.
+        return JSONResponse({"status": "ok"})
+
+    app.routes.append(Route("/health", endpoint=health, methods=["GET"]))
     return app
 
 
