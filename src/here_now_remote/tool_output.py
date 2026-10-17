@@ -23,7 +23,8 @@ def receipt_text(receipt: PublishReceipt) -> str:
              f"version {receipt.previous_version} -> {receipt.target_version or '?'}",
              f"last observed {receipt.current_version or '?'}",
              f"uploaded {receipt.uploaded} | skipped {receipt.skipped}"]
-    lines.extend(f"changed {p} | sha256 {receipt.changed_hashes[p]}" for p in receipt.changed_paths)
+    lines.extend(f"changed {p} | sha256 {receipt.changed_hashes[p]}" for p in receipt.changed_paths if p in receipt.changed_hashes)
+    lines.extend(f"deleted {p}" for p in receipt.changed_paths if p not in receipt.changed_hashes)
     if receipt.message:
         lines.append(receipt.message)
     lines.append(CONCURRENCY_NOTE)
