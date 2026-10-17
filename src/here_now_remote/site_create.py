@@ -64,12 +64,12 @@ class SiteCreator:
         except HereNowError as error:
             return CreateReceipt("not_published", slug, url, version, receipt.uploaded,
                                  f"Upload stopped ({error.code}); Site is not confirmed live.")
-        finalize_error = None
         try:
             # Canonical provider endpoint; never trust a returned finalizeUrl with our bearer.
             self.http.json("POST", f"/api/v1/publish/{slug}/finalize", {"versionId": version})
-        except HereNowError as error:
-            finalize_error = error
+        except HereNowError:
+            # The write may have completed. Verify via a separate readback.
+            pass
         try:
             actual = self.reader.get_site(slug)
         except HereNowError:
