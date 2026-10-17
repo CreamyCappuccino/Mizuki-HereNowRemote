@@ -2,7 +2,7 @@
 
 A small MCP for reading and editing HTML/CSS/JS in owned [here.now](https://here.now) sites without changing their URLs.
 
-**Status:** v0.1 implementation; provider operations tested with an in-memory HTTP service. Live here.now publishing and deployment to an operator's MCP host are not yet verified.
+**Status:** v0.1 implemented; [CI passed](https://github.com/CreamyCappuccino/Mizuki-HereNowRemote/actions/runs/39018635047) with 49 tests including the actual MCP SDK, plus Ruff. Provider operations use an in-memory HTTP test service. Live here.now publishing and operator-host deployment remain unverified.
 
 ## Use
 
