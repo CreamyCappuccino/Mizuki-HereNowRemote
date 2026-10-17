@@ -29,7 +29,9 @@ The MCP SDK is an optional dependency so the provider core can be tested indepen
 
 `changes` is a list of `{ "path": "assets/style.css", "content": "..." }`. An optional `content_type` changes the MIME type; omitting it preserves the existing type. The `base_version_id` must come from the files that were actually edited, not from a fresh read immediately before writing.
 
-Publication is one tool call: merge manifest → upload required bytes → finalize → compare current version/manifest. Output is compact text; errors are MCP error results. No new CMS, database, approval queue or Git sync.
+Publication is one tool call: merge manifest → upload required bytes → finalize → compare current version/manifest. Output is compact text with a matching minimal `structuredContent.result` string and `outputSchema` on all four tools; errors remain MCP error results. No new CMS, database, approval queue or Git sync.
+
+Remote HTTP has a side-effect-free, unauthenticated `GET /health` returning `{"status":"ok"}` for origin and tunnel liveness checks. It does not contact here.now or expose site/credential data.
 
 ## Boundaries that matter
 
