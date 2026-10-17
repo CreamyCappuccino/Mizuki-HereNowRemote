@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mizuki-herenow-remote"
-version = "0.2.0"
+version = "0.3.0"
 description = "Read and update files in owned here.now sites through MCP"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.28,<1"]
