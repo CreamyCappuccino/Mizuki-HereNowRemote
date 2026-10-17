@@ -1,4 +1,4 @@
-"""Read provider metadata and hash-checked public bytes, not guessed owner APIs."""
+"""Read owner metadata and hash-checked bytes through authenticated file APIs."""
 from __future__ import annotations
 
 from urllib.parse import quote
@@ -26,9 +26,9 @@ class SiteReader:
     def bytes_for(self, snapshot: SiteSnapshot, entry: FileEntry) -> bytes:
         if entry.size > self.max_file_bytes:
             raise HereNowError("too_large", "File exceeds the configured read limit.", stage="read_file")
-        data = self.http.public_bytes(snapshot.slug, quote(entry.path, safe="/"), max_bytes=self.max_file_bytes)
+        data = self.http.file_bytes(snapshot.slug, quote(entry.path, safe="/"), max_bytes=self.max_file_bytes)
         if not entry.matches(data):
-            raise HereNowError("content_mismatch", "Public bytes differ from the manifest. Re-read later; do not edit this response.", stage="read_file")
+            raise HereNowError("content_mismatch", "File bytes differ from the manifest. Re-read later; do not edit this response.", stage="read_file")
         return data
 
     def read_file(self, slug: str, path: str, base_version_id: str | None = None) -> dict:
