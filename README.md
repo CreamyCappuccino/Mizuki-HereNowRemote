@@ -2,7 +2,7 @@
 
 A small MCP for reading and editing HTML/CSS/JS in owned [here.now](https://here.now) sites without changing their URLs.
 
-**Status:** v0.2 code adds Site creation, history and restore. The existing v0.1 service has been used from ChatGPT for real read/write; the three new operations have passed isolated tests and are awaiting operator-host deployment and live provider acceptance.
+**Status:** v0.2 was deployed and verified from ChatGPT with real Site creation, reading, updating, history and restoration. v0.3 adds targeted Site-file deletion; live acceptance for that new operation is pending.
 
 ## Use
 
@@ -18,7 +18,7 @@ Set `HERENOW_API_KEY` in the process environment, or use the existing owner-only
 
 The MCP SDK is an optional dependency so the provider core can be tested independently. The MCP host targets **SDK 2.0.0**, not the v1 FastMCP interface.
 
-## Seven tools
+## Eight tools
 
 | Tool | Purpose |
 | --- | --- |
@@ -26,13 +26,14 @@ The MCP SDK is an optional dependency so the provider core can be tested indepen
 | `get_site(slug)` | Current version and complete manifest |
 | `read_site_file(slug, path, base_version_id?)` | Read owner-authenticated UTF-8 text and verify its manifest hash |
 | `update_site_files(slug, base_version_id, changes)` | Replace/add requested text files; keep all other files |
+| `delete_site_files(slug, base_version_id, paths)` | Remove only named Site files; preserve all remaining files and versions |
 | `create_site(files, display_name?)` | Create a new public personal-account site from text files (root index.html required) and return its URL |
 | `list_versions(slug)` | List historical published versions of an owned site |
 | `restore_version(slug, version_id, base_version_id)` | Explicitly restore the entire site to a selected saved version |
 
 `changes` is a list of `{ "path": "assets/style.css", "content": "..." }`. An optional `content_type` changes the MIME type; omitting it preserves the existing type. The `base_version_id` must come from the files that were actually edited, not from a fresh read immediately before writing.
 
-Publication is one tool call: merge manifest → upload required bytes → finalize → compare current version/manifest. Output is compact text with a matching minimal `structuredContent.result` string and `outputSchema` on all seven tools; errors remain MCP error results. No new CMS, database, approval queue or Git sync.
+Publication is one tool call: merge manifest → upload required bytes → finalize → compare current version/manifest. Output is compact text with a matching minimal `structuredContent.result` string and `outputSchema` on all eight tools; errors remain MCP error results. No new CMS, database, approval queue or Git sync.
 
 Remote HTTP has a side-effect-free, unauthenticated `GET /health` returning `{"status":"ok"}` for origin and tunnel liveness checks. It does not contact here.now or expose site/credential data.
 
@@ -43,7 +44,7 @@ Custom `nor.strangebasket.com/<path>/` mounts remain separate Cloudflare operati
 - File reads use the **owner-authenticated API**, not public URLs or visitor passwords. The current official Skill documents support for password/restricted sites. Binary reads return metadata; live account acceptance is still pending.
 - API credentials are used only on `https://here.now`. Owner file downloads use that same API; signed R2 uploads never receive them. Redirects are not followed.
 - Changed files are UTF-8 text, up to 2 MiB total. File reads are bounded to 1 MiB per file. These limits bound MCP payload/memory size, not HTML capabilities; intentional JavaScript is not sanitized away.
-- The complete existing manifest is retained. No file deletion, SPA/access/TTL setting changes, automatic rollback or blind write retry.
+- Updates preserve all unmodified files. Targeted deletion removes only explicitly named paths from the next complete manifest, rejecting unknown paths and requests that would leave a Site empty. Versions remain available for restoration. There is no whole-Site deletion tool, SPA/access/TTL change, automatic rollback or blind write retry.
 - The edited version is sent as **`baseVersionId`**. The current official publisher documents stale-base rejection, including at finalize. Detected conflicts are returned without automatic overwrite. Process-local serialization and version readbacks supplement, not replace, the provider check.
 - A failed response is not proof of a failed publish. Receipts report `outcome_unknown` when readback cannot settle it, with the target version and changed-file hashes.
 
