@@ -30,7 +30,7 @@ def test_partial_update_preserves_other_files_url_and_mime(rig):
     assert after.by_path["assets/style.css"].content_type == "text/css"
     assert result.uploaded == 1 and result.skipped == 1
     assert fake.finalize_count == 1
-    assert not any(r.url.host == "test-site.here.now" for r in fake.requests)  # No untouched bytes downloaded.
+    assert not any("/files/" in r.url.path for r in fake.requests)  # No untouched bytes downloaded.
     assert "secret" not in receipt_text(result)
 
 
@@ -105,10 +105,10 @@ def test_read_drift_is_rejected(rig):
         reader.read_file(fake.slug, "index.html")
 
 
-def test_incorrect_public_bytes_are_not_returned(rig):
+def test_incorrect_owner_bytes_are_not_returned(rig):
     fake, reader, _ = rig
     fake.corrupt_read = True
-    with pytest.raises(HereNowError, match="Public bytes differ"):
+    with pytest.raises(HereNowError, match="File bytes differ"):
         reader.read_file(fake.slug, "index.html")
 
 
@@ -131,3 +131,30 @@ def test_multiple_files_and_utf8_byte_sizes(rig):
     assert result.status == "published" and result.uploaded == 2
     entry = reader.get_site(fake.slug).by_path["index.html"]
     assert entry.size == len("<h1>潮さん</h1>".encode())
+
+
+def test_provider_rejects_race_between_last_check_and_finalize(rig):
+    fake, _, updater = rig
+    fake.race_at_finalize = True
+    original_css = fake.bodies["assets/style.css"]
+    result = updater.update(fake.slug, "v1", change())
+    assert result.status == "version_conflict"
+    assert result.current_version == "external-v3"
+    assert fake.bodies["assets/style.css"] == original_css
+    assert fake.finalize_count == 1
+
+
+def test_owner_read_never_uses_public_origin(rig):
+    fake, reader, _ = rig
+    reader.read_file(fake.slug, "index.html")
+    assert all(r.url.host == "here.now" for r in fake.requests)
+    assert any(r.url.path.endswith("/files/index.html") for r in fake.requests)
+
+
+def test_finalize_unchanged_receipt_uses_current_version(rig):
+    fake, _, updater = rig
+    # Provider-normalized metadata can be byte-identical even when descriptors differ.
+    fake.finalize_noop = True
+    result = updater.update(fake.slug, "v1", [TextChange("index.html", fake.bodies["index.html"].decode(), "text/html; charset=utf-8")])
+    assert result.status == "unchanged"
+    assert result.target_version == result.current_version == "v1"
