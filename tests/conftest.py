@@ -29,6 +29,8 @@ class FakeProvider:
         self.finalize_count = 0
         self.prepare_count = 0
         self.finalize_timeout = False
+        self.race_at_finalize = False
+        self.finalize_noop = False
         self.upload_failure = False
         self.after_prepare_change = False
         self.read_drift = False
@@ -48,6 +50,12 @@ class FakeProvider:
             assert req.headers["authorization"] == "Bearer test-key"
             if path == "/api/v1/publishes":
                 return httpx.Response(200, json={"publishes": [self.details()]})
+            if req.method == "GET" and "/files/" in path:
+                if self.read_drift:
+                    self.version = "v3"
+                data = self.bodies.get(unquote(path.split("/files/", 1)[1]))
+                return httpx.Response(200 if data is not None else 404,
+                                      content=b"wrong" if self.corrupt_read else data)
             if req.method == "GET":
                 if self.finalize_readback_error and self.finalize_count:
                     raise httpx.ReadTimeout("test", request=req)
@@ -55,7 +63,9 @@ class FakeProvider:
             if req.method == "PUT":
                 self.prepare_count += 1
                 payload = json.loads(req.content)
-                assert set(payload) == {"files"}  # No undocumented precondition or setting reset.
+                assert set(payload) == {"files", "baseVersionId"}
+                assert payload["baseVersionId"] == self.version
+                self.base = payload["baseVersionId"]
                 self.next_manifest = payload["files"]
                 self.pending = "v2"
                 existing = {e["path"]: e["hash"] for e in self.manifest}
@@ -73,6 +83,14 @@ class FakeProvider:
             if path.endswith("/finalize"):
                 self.finalize_count += 1
                 assert json.loads(req.content) == {"versionId": "v2"}
+                if self.race_at_finalize:
+                    self.version = "external-v3"
+                if self.version != self.base:
+                    return httpx.Response(409, json={"code": "version_conflict", "details": {"currentVersionId": self.version}})
+                if self.finalize_noop:
+                    self.manifest = deepcopy(self.next_manifest)
+                    self.pending = None
+                    return httpx.Response(200, json={"success": True, "unchanged": True, "currentVersionId": self.version})
                 self.manifest = deepcopy(self.next_manifest)
                 self.bodies.update(self.uploads)
                 self.version, self.pending = "v2", None
@@ -86,11 +104,6 @@ class FakeProvider:
                 return httpx.Response(503)
             self.uploads[unquote(path.lstrip("/"))] = req.content
             return httpx.Response(200)
-        if host == "test-site.here.now":
-            if self.read_drift:
-                self.version = "v3"
-            data = self.bodies.get(unquote(path.lstrip("/")))
-            return httpx.Response(200 if data is not None else 404, content=b"wrong" if self.corrupt_read else data)
         raise AssertionError(f"Unexpected HTTP request {req.method} {host} {path}")
 
 
